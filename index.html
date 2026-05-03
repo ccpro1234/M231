@@ -963,42 +963,52 @@ if(pendingBet && r!=="T"){
 
 /* ========= อัปเดต AI ========= */
 if(shoe.length && r!=="T"){
+ai.forEach((a,i)=>{
 
-  ai.forEach(a=>{
+  /* 🔒 ล็อกค่าที่ทำนายก่อน (กัน undo/replay เพี้ยน) */
+  let predicted = a.next;
 
-    let win = (a.next === r);
-    a.acc.push(win);
+  let win = (predicted === r);
+  a.acc.push(win);
 
-    /* ===== ADAPTIVE WEIGHT ===== */
-    let recent = a.acc.slice(-10);
-    let score = recent.filter(v=>v===true).length;
+  /* 🔥 FIX: ตัดความยาวให้เหมือนของจริง */
+if(a.acc.length > 50){
+  a.acc.shift();
+}
 
-    if(score >= 7){
-      a.weight = Math.min(3, a.weight + 0.15);
-    }
-    else if(score <= 3){
-      a.weight = Math.max(0.5, a.weight - 0.15);
-    }
-    else{
-      a.weight += (win ? 0.05 : -0.05);
-    }
+ 
 
-    /* ===== CONFIDENCE (ใหม่) ===== */
-    let total = recent.length || 1;
+  /* ===== ใช้ 10 ตาล่าสุด ===== */
+  let recent = a.acc.slice(-10);
+  let score = recent.filter(v=>v===true).length;
+  let total = recent.length;
+
+  /* ===== ADAPTIVE WEIGHT (ล็อกช่วง) ===== */
+  if(score >= 7){
+    a.weight = Math.min(3, a.weight + 0.15);
+  }
+  else if(score <= 3){
+    a.weight = Math.max(0.5, a.weight - 0.15);
+  }
+  else{
+    a.weight += (win ? 0.05 : -0.05);
+  }
+
+  /* 🔒 กัน weight drift */
+  a.weight = Math.max(0.5, Math.min(3, a.weight));
+
+  /* ===== CONF (ของจริง + กันช่วงต้น) ===== */
+  if(total < 3){
+    a.conf = 50;
+  }else{
     let winrate = score / total;
+    a.conf = Math.round(winrate * 100);
+  }
 
-    a.conf = Math.min(
-      99,
-      Math.max(
-        50,
-        (winrate * 100) + (a.weight * 10)
-      ) | 0
-    );
+});
+}
 
-  });
-
-} // ✅ ปิด if
-
+/* ===== ใส่ผลใหม่ ===== */
 shoe.push(r);
 
 /* ===== สร้าง prediction ใหม่ ===== */
@@ -1006,6 +1016,7 @@ ai.forEach((a,i)=>{
   a.next = predict(i);
 });
 
+/* ===== render ===== */
 render();
 }
 
@@ -1021,41 +1032,46 @@ if(pendingBet && r!=="T"){
 /* ===== อัปเดต AI ===== */
 if(shoe.length && r!=="T"){
 
-  ai.forEach(a=>{
+ai.forEach((a,i)=>{
 
-    let win = (a.next === r);
-    a.acc.push(win);
+  /* 🔒 ล็อกค่า next ก่อน */
+  let predicted = a.next;
 
-    /* ===== ใช้แค่ 10 ตาล่าสุด ===== */
-    let recent = a.acc.slice(-10);
-    let score = recent.filter(v=>v===true).length;
-    let total = recent.length || 1;
+  let win = (predicted === r);
+  a.acc.push(win);
 
-    /* ===== ADAPTIVE WEIGHT ===== */
-    if(score >= 7){
-      a.weight = Math.min(3, a.weight + 0.15);
-    }
-    else if(score <= 3){
-      a.weight = Math.max(0.5, a.weight - 0.15);
-    }
-    else{
-      a.weight += (win ? 0.05 : -0.05);
-    }
+  /* 🔥 FIX: ให้ replay เหมือนของจริง */
+if(a.acc.length > 50){
+  a.acc.shift();
+}
 
-    /* ===== CONFIDENCE (อิง recent เท่านั้น) ===== */
+
+  /* ===== ใช้ 10 ตาล่าสุด ===== */
+  let recent = a.acc.slice(-10);
+  let score = recent.filter(v=>v===true).length;
+  let total = recent.length;
+
+  /* ===== ADAPTIVE WEIGHT ===== */
+  if(score >= 7){
+    a.weight = Math.min(3, a.weight + 0.15);
+  }
+  else if(score <= 3){
+    a.weight = Math.max(0.5, a.weight - 0.15);
+  }
+  else{
+    a.weight += (win ? 0.05 : -0.05);
+  }
+
+  /* ===== CONF (ของจริง + กันหลอกช่วงต้น) ===== */
+  if(total < 3){
+    a.conf = 50;
+  }else{
     let winrate = score / total;
+    a.conf = Math.round(winrate * 100);
+  }
 
-    a.conf = Math.min(
-      99,
-      Math.max(
-        50,
-        (winrate * 100) + (a.weight * 8)
-      ) | 0
-    );
-
-  });
-
-} // ✅ ปิด if (สำคัญ)
+});
+}
 
 /* ===== ใส่ผลใหม่ ===== */
 shoe.push(r);
@@ -1070,7 +1086,6 @@ referee();
 quantumVAR();
 
 }
-
 
 function rebuildAll(){
 
