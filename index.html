@@ -858,75 +858,152 @@ conf:50
 }
 
 function predict(i){
-let clean=shoe.filter(x=>x!=="T");
-let p=clean.filter(x=>x=="P").length;
-let b=clean.filter(x=>x=="B").length;
-let last=clean.at(-1)||"P";
-let streak=0;
 
-for(let j=clean.length-1;j>=0;j--){
-if(clean[j]===last) streak++;
-else break;
+let clean = shoe.filter(x=>x!="T");
+let n = clean.length;
+
+if(n < 4) return Math.random()<0.5?"P":"B";
+
+let last = clean.at(-1);
+
+/* ===== WINDOW ===== */
+let w10 = clean.slice(-10);
+let w15 = clean.slice(-15);
+let w20 = clean.slice(-20);
+
+/* ===== COUNT ===== */
+let p10 = w10.filter(x=>x=="P").length;
+let b10 = w10.filter(x=>x=="B").length;
+
+let p15 = w15.filter(x=>x=="P").length;
+let b15 = w15.filter(x=>x=="B").length;
+
+/* ===== STREAK ===== */
+let streak = 1;
+for(let j=n-2;j>=0;j--){
+  if(clean[j]===last) streak++;
+  else break;
 }
 
+/* ===== CHOP DETECT ===== */
+let seq6 = clean.slice(-6).join("");
+let chop =
+(seq6=="PBPBPB" || seq6=="BPBPBP");
+
+/* ===== BALANCE ===== */
+let balance = p10 - b10;
+
+/* ===== LAST PATTERN ===== */
+let last4 = clean.slice(-4).join("");
+
 switch(i){
-case 0:return streak>=3?(last=="P"?"B":"P"):last;
-case 1:return last=="P"?"B":"P";
-case 2:return p>b?"P":"B";
-case 3:return clean.slice(-3).join("")=="PPP"?"B":"P";
-case 4:return clean.slice(-3).join("")=="BBB"?"P":"B";
-case 5:return clean.length%2?"P":"B";
-case 6:return streak>=2?last:(last=="P"?"B":"P");
-case 7:return b>p?"B":"P";
-case 8:return clean.length%3?"P":"B";
-default:return p>=b?"P":"B";
+
+case 0: // Trend
+  if(streak>=2 && !chop) return last;
+  return last=="P"?"B":"P";
+
+case 1: // Reversal
+  if(streak>=3) return last=="P"?"B":"P";
+  return last;
+
+case 2: // Dragon
+  if(streak>=3) return last;
+  if(streak==1) return last=="P"?"B":"P";
+  return last;
+
+case 3: // Frequency
+  return p15 > b15 ? "P":"B";
+
+case 4: // Cycle
+  if(chop) return last;
+  return (n%3==0) ? (last=="P"?"B":"P") : last;
+
+case 5: // Momentum
+  if(balance > 2) return "P";
+  if(balance < -2) return "B";
+  return last;
+
+case 6: // Road
+  if(chop) return last;
+  if(last4=="PPBB" || last4=="BBPP") return last;
+  return last=="P"?"B":"P";
+
+case 7: // Shadow
+  if(streak>=4) return last=="P"?"B":"P";
+  if(chop) return last;
+  return last;
+
+case 8: // Voting
+  let p5 = clean.slice(-5).filter(x=>x=="P").length;
+  return p5>=3 ? "P":"B";
+
+case 9: // Meta
+  let p20 = w20.filter(x=>x=="P").length;
+  let b20 = w20.filter(x=>x=="B").length;
+
+  if(Math.abs(p20-b20)<=2){
+    return last;
+  }
+
+  return p20 > b20 ? "P":"B";
+
+default:
+  return "P";
 }
 }
 
 function pushResult(r){
 
 /* ตัดสินผลตัวแทงก่อน */
-if(
-pendingBet &&
-r!=="T"
-){
-refereeHistory.push(
-pendingBet===r ? "W":"L"
-);
+if(pendingBet && r!=="T"){
+  refereeHistory.push(
+    pendingBet===r ? "W":"L"
+  );
 }
 
-
-/* อัปเดต AI accuracy */
+/* ========= อัปเดต AI ========= */
 if(shoe.length && r!=="T"){
-ai.forEach(a=>{
 
-let win=(a.next===r);
+  ai.forEach(a=>{
 
+    let win = (a.next === r);
+    a.acc.push(win);
 
-a.acc.push(win);
+    /* ===== ADAPTIVE WEIGHT ===== */
+    let recent = a.acc.slice(-10);
+    let score = recent.filter(v=>v===true).length;
 
-if(win)
-a.weight=Math.min(3,a.weight+.09);
-else
-a.weight=Math.max(.6,a.weight-.07);
+    if(score >= 7){
+      a.weight = Math.min(3, a.weight + 0.15);
+    }
+    else if(score <= 3){
+      a.weight = Math.max(0.5, a.weight - 0.15);
+    }
+    else{
+      a.weight += (win ? 0.05 : -0.05);
+    }
 
-});
-}
+    /* ===== CONFIDENCE (ใหม่) ===== */
+    let total = recent.length || 1;
+    let winrate = score / total;
+
+    a.conf = Math.min(
+      99,
+      Math.max(
+        50,
+        (winrate * 100) + (a.weight * 10)
+      ) | 0
+    );
+
+  });
+
+} // ✅ ปิด if
 
 shoe.push(r);
 
-
-/* สร้าง prediction ใหม่ */
+/* ===== สร้าง prediction ใหม่ ===== */
 ai.forEach((a,i)=>{
-a.next=predict(i);
-
-let wins=
-a.acc.filter(v=>v===true).length;
-
-a.conf=Math.min(
-99,
-61+wins*2+a.weight*8|0
-);
+  a.next = predict(i);
 });
 
 render();
@@ -934,52 +1011,65 @@ render();
 
 function pushResultReplay(r){
 
-if(
-pendingBet &&
-r!=="T"
-){
-refereeHistory.push(
-pendingBet===r ? "W":"L"
-);
+/* ===== ตัดสินผลไม้ก่อน ===== */
+if(pendingBet && r!=="T"){
+  refereeHistory.push(
+    pendingBet===r ? "W":"L"
+  );
 }
 
+/* ===== อัปเดต AI ===== */
 if(shoe.length && r!=="T"){
-ai.forEach(a=>{
 
-let win=(a.next===r);
+  ai.forEach(a=>{
 
+    let win = (a.next === r);
+    a.acc.push(win);
 
-a.acc.push(win);
+    /* ===== ใช้แค่ 10 ตาล่าสุด ===== */
+    let recent = a.acc.slice(-10);
+    let score = recent.filter(v=>v===true).length;
+    let total = recent.length || 1;
 
-if(win)
-a.weight=Math.min(3,a.weight+.09);
-else
-a.weight=Math.max(.6,a.weight-.07);
+    /* ===== ADAPTIVE WEIGHT ===== */
+    if(score >= 7){
+      a.weight = Math.min(3, a.weight + 0.15);
+    }
+    else if(score <= 3){
+      a.weight = Math.max(0.5, a.weight - 0.15);
+    }
+    else{
+      a.weight += (win ? 0.05 : -0.05);
+    }
 
-});
-}
+    /* ===== CONFIDENCE (อิง recent เท่านั้น) ===== */
+    let winrate = score / total;
 
+    a.conf = Math.min(
+      99,
+      Math.max(
+        50,
+        (winrate * 100) + (a.weight * 8)
+      ) | 0
+    );
+
+  });
+
+} // ✅ ปิด if (สำคัญ)
+
+/* ===== ใส่ผลใหม่ ===== */
 shoe.push(r);
 
+/* ===== สร้าง prediction ===== */
 ai.forEach((a,i)=>{
-
-a.next=predict(i);
-
-let wins=
-a.acc.filter(v=>v===true).length;
-
-a.conf=Math.min(
-99,
-61+wins*2+a.weight*8|0
-);
-
+  a.next = predict(i);
 });
 
+/* ===== ระบบหลัก ===== */
 referee();
 quantumVAR();
 
 }
-
 
 
 function rebuildAll(){
